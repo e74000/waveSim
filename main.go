@@ -9,7 +9,13 @@ import (
 )
 
 var (
-	cmap = colorgrad.Spectral()
+	cmap = colorgrad.RdBu()
+)
+
+const (
+	bCondWall = iota
+	bCondFoll
+	bCondAnti
 )
 
 func sigmoid(x float64) float64 {
@@ -29,6 +35,8 @@ type Game struct {
 	c2  float64
 	Dx2 float64
 	Dt2 float64
+
+	bCond int
 
 	t time.Time
 }
@@ -53,24 +61,32 @@ func (g *Game) Update() error {
 	copy(g.last, g.curr)
 	copy(g.curr, g.next)
 
-	g.curr[(g.y/2)*g.x] = 30 * math.Sin(time.Since(g.t).Seconds())
-	g.last[(g.y/2)*g.x] = 30 * math.Sin(time.Since(g.t).Seconds()-0.1)
+	i := (g.y/2)*g.x + g.x/16
+	g.curr[i] = 20 * math.Sin(time.Since(g.t).Seconds()*10)
+	g.last[i] = 20 * math.Sin(time.Since(g.t).Seconds()*10-0.5)
 
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	for i := 0; i < g.x*g.y; i++ {
+	for y := 0; y < g.y; y++ {
+		for x := 0; x < g.x; x++ {
+			i := y*g.x + x
 
-		//if g.curr[i] != 0 {
-		//	fmt.Println(g.curr[i])
-		//}
+			if g.wall[i] {
+				g.pixels[4*i+0] = 0
+				g.pixels[4*i+1] = 0
+				g.pixels[4*i+2] = 0
+				continue
+			}
 
-		c := cmap.At(sigmoid(g.curr[i]))
+			c := cmap.At(sigmoid(g.curr[i]))
 
-		g.pixels[4*i+0],
-			g.pixels[4*i+1],
-			g.pixels[4*i+2] = c.RGB255()
+			g.pixels[4*i+0],
+				g.pixels[4*i+1],
+				g.pixels[4*i+2] = c.RGB255()
+
+		}
 	}
 
 	screen.WritePixels(g.pixels)
@@ -92,6 +108,16 @@ func (g *Game) init() {
 
 	g.wall = make([]bool, g.x*g.y)
 
+	for y := 0; y < g.y; y++ {
+		for x := 0; x < g.x; x++ {
+			i := y*g.x + x
+
+			if math.Pow(float64(y)/float64(g.y)-0.5, 2)*8 > float64(x)/float64(g.x) && x < g.x/4 {
+				g.wall[i] = true
+			}
+		}
+	}
+
 	g.pixels = make([]byte, g.x*g.y*4)
 
 	g.t = time.Now()
@@ -103,7 +129,16 @@ func (g *Game) getNeighborValues(x, y int) (float64, float64, float64, float64) 
 
 	var u, d, l, r float64
 
-	var bCond = 0.0 // The boundary condition
+	var bCond float64
+
+	switch g.bCond {
+	case bCondWall:
+		bCond = 0.0
+	case bCondFoll:
+		bCond = g.curr[y*g.x+x]
+	case bCondAnti:
+		bCond = -g.curr[y*g.x+x]
+	}
 
 	if x > 0 {
 		if !g.wall[li] {
@@ -152,9 +187,10 @@ func main() {
 	rand.Seed(time.Now().Unix())
 
 	g := &Game{
-		c2:  0.1,
-		Dx2: 1,
-		Dt2: 1,
+		c2:    0.5,
+		Dx2:   1,
+		Dt2:   1,
+		bCond: bCondWall,
 	}
 
 	g.init()
